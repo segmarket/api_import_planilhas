@@ -120,13 +120,7 @@ def buscar_vendas():
             'data_hora': venda.data_hora.isoformat(),
             'valor': venda.valor,
             'produto': venda.produto,
-            'quantidade': venda.quantidade,
-            'idvenda_exter': venda.idvenda_exter,
-            'idmercado': venda.idmercado,
-            'mercado': {
-                'idmercado': venda.mercado.idmercado,
-                # Adicione outros campos necessários do mercado aqui
-            }
+            'quantidade': venda.quantidade
         })
 
     return jsonify(vendas_agrupadas)
