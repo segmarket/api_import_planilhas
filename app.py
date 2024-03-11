@@ -5,10 +5,23 @@ from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 import re
 from datetime import datetime
+import requests
 
-app = Flask(__name__)
+app = Flask(__name__)   
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://rwvtorlohmrtob:80345d4c65f0d50ffc13198838a5195412213a02a7dca8930c77b0860414d97c@ec2-44-211-104-233.compute-1.amazonaws.com/ddk2jvcro9q8ff'
 db = SQLAlchemy(app)
+
+ZM_API_URL = 'https://segcam.segmarket.com.br/zm/api'
+ZM_USER = 'api'
+ZM_PASSWORD = 'Mundo@108'
+
+def get_auth_token():
+    url = f"{ZM_API_URL}/host/login.json"
+    response = requests.post(url, data={'user': ZM_USER, 'pass': ZM_PASSWORD})
+    if response.status_code == 200:
+        return response.json().get('access_token')
+    else:
+        return None
 
 class Mercado(db.Model):
     __tablename__ = 'mercado'
@@ -92,7 +105,7 @@ def upload_vendas():
 
     return jsonify({"sucesso": "Dados importados com sucesso."}), 200
 
-@app.route('/buscar_vendas', methods=['POST'])
+@app.route('/buscar_vendas', methods=['GET'])
 def buscar_vendas():
     # Obtendo os dados do corpo da requisição
     dados = request.get_json()
@@ -124,6 +137,40 @@ def buscar_vendas():
         })
 
     return jsonify(vendas_agrupadas)
+
+def get_auth_token():
+    url = f"{ZM_API_URL}/host/login.json"
+    response = requests.post(url, data={'user': ZM_USER, 'pass': ZM_PASSWORD})
+    if response.status_code == 200:
+        return response.json().get('access_token')
+    else:
+        return None
+    
+@app.route('/link_video_event', methods=['GET'])
+def get_event_video_link():
+    event_id = request.args.get('event_id')
+    if not event_id:
+        return jsonify({"erro": "ID do evento não fornecido"}), 400
+    
+    auth_token = get_auth_token()
+    if not auth_token:
+        return jsonify({"erro": "Não foi possível autenticar"}), 401
+    
+    # Obtendo detalhes do evento específico
+    url = f"{ZM_API_URL}/events/{event_id}.json?token={auth_token}"
+    response = requests.get(url)
+    if response.status_code == 200:
+        event_details = response.json()['event']['Event']
+        monitor_id = event_details['MonitorId']
+        start_time = event_details['StartTime']
+        event_date = start_time.split(' ')[0]
+        
+        # Construindo o link do vídeo assumindo um padrão específico de caminho
+        video_url = f"https://segcam.segmarket.com.br/videos/{monitor_id}/{event_date}/{event_id}/{event_id}-video.mp4"
+        
+        return jsonify({"link_video": video_url})
+    else:
+        return jsonify({"erro": "Erro ao acessar a API ou evento não encontrado"}), response.status_code
 
 if __name__ == '__main__':
     app.run(debug=True)
