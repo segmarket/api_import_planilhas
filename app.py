@@ -137,15 +137,7 @@ def buscar_vendas():
         })
 
     return jsonify(vendas_agrupadas)
-
-def get_auth_token():
-    url = f"{ZM_API_URL}/host/login.json"
-    response = requests.post(url, data={'user': ZM_USER, 'pass': ZM_PASSWORD})
-    if response.status_code == 200:
-        return response.json().get('access_token')
-    else:
-        return None
-    
+ 
 @app.route('/link_video_event', methods=['GET'])
 def get_event_video_link():
     event_id = request.args.get('event_id')
@@ -173,5 +165,5 @@ def get_event_video_link():
         return jsonify({"erro": "Erro ao acessar a API ou evento não encontrado"}), response.status_code
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=False)
 
