@@ -43,67 +43,80 @@ with app.app_context():
 
 @app.route('/upload-vendas', methods=['POST'])
 def upload_vendas():
-    mercado_id = request.form['idmercado']
-    layout = request.form['layout']
-    file = request.files['file']
-    
-    if not file:
-        return "Nenhum arquivo enviado.", 400
+    try:
+        mercado_id = request.form['idmercado']
+        layout = request.form['layout']
+        file = request.files['file']
+        
+        if not file:
+            return "Nenhum arquivo enviado.", 400
 
-    skiprows = 0 if layout == 'amlabs' else 14
-    df = pd.read_excel(file.stream, skiprows=skiprows, header=0)
+        skiprows = 0 if layout == 'amlabs' else 14
+        df = pd.read_excel(file.stream, skiprows=skiprows, header=0)
 
-    if layout == 'amlabs':
-        colunas = {
-            'data_hora': 'Data/Hora',
-            'valor': 'Valor',
-            'produto': 'Descrição produto',
-            'quantidade': 'Quantidade',
-            'idvenda_exter': 'Cód. interno'  # Coluna para idvenda_exter
-        }
-    elif layout == 'vmpay':
-        colunas = {
-            'data_hora': 'Data/hora',
-            'valor': 'Valor (R$)',
-            'produto': 'Produto',
-            'quantidade': 'Quantidade',
-            'idvenda_exter': 'Requisição'  # Coluna para idvenda_exter
-        }
+        if layout == 'amlabs':
+            colunas = {
+                'data_hora': 'Data/Hora',
+                'valor': 'Valor',
+                'produto': 'Descrição produto',
+                'quantidade': 'Quantidade',
+                'idvenda_exter': 'Cód. interno'
+            }
+        elif layout == 'vmpay':
+            colunas = {
+                'data_hora': 'Data/hora',
+                'valor': 'Valor (R$)',
+                'produto': 'Produto',
+                'quantidade': 'Quantidade',
+                'idvenda_exter': 'Requisição'
+            }
 
-    df[colunas['data_hora']] = pd.to_datetime(df[colunas['data_hora']])
-    data_planilha = df[colunas['data_hora']].min().date()
+        df[colunas['data_hora']] = pd.to_datetime(df[colunas['data_hora']])
+        data_minima = df[colunas['data_hora']].min().date()
+        data_maxima = df[colunas['data_hora']].max().date()
 
-    vendas_existentes = db.session.query(func.count(Venda.id)).filter(
-        func.date(Venda.data_hora) == data_planilha,
-        Venda.idmercado == mercado_id
-    ).scalar()
-    
-    if vendas_existentes > 0:
-        return jsonify({"erro": "Vendas para este mercado e data já foram importadas."}), 400
+        vendas_existentes = db.session.query(func.count(Venda.id)).filter(
+            Venda.idmercado == mercado_id,
+            func.date(Venda.data_hora) >= data_minima,
+            func.date(Venda.data_hora) <= data_maxima
+        ).scalar()
+        
+        if vendas_existentes > 0:
+            return jsonify({"erro": "Vendas para este mercado e período já foram importadas."}), 400
 
-    for _, row in df.iterrows():
-        data_hora = row[colunas['data_hora']].to_pydatetime()
-        idvenda_exter = row[colunas['idvenda_exter']]  # Extrai o valor de idvenda_exter
-         # Extrair e converter a quantidade para vmpay
-        if layout == 'vmpay':
-            quantidade_str = row[colunas['quantidade']]
-            match = re.match(r'(\d+)', quantidade_str)
-            quantidade = int(match.group(1)) if match else 1
-        else:
-            quantidade = row.get(colunas['quantidade'], 1)
-        venda = Venda(
-            idmercado=mercado_id,
-            data_hora=data_hora,
-            valor=row[colunas['valor']],
-            produto=row[colunas['produto']],
-            quantidade=quantidade,
-            idvenda_exter=idvenda_exter  # Atribui o valor extraído a idvenda_exter
-        )
-        db.session.add(venda)
+        for _, row in df.iterrows():
+            data_hora = row[colunas['data_hora']].to_pydatetime()
+            idvenda_exter = row[colunas['idvenda_exter']]  # Extrai o valor de idvenda_exter
+            # Extrair e converter a quantidade para vmpay
+            if layout == 'vmpay':
+                quantidade_str = row[colunas['quantidade']]
+                match = re.match(r'(\d+)', quantidade_str)
+                quantidade = int(match.group(1)) if match else 1
+            else:
+                quantidade = row.get(colunas['quantidade'], 1)
+            venda = Venda(
+                idmercado=mercado_id,
+                data_hora=data_hora,
+                valor=row[colunas['valor']],
+                produto=row[colunas['produto']],
+                quantidade=quantidade,
+                idvenda_exter=idvenda_exter  # Atribui o valor extraído a idvenda_exter
+            )
+            db.session.add(venda)
 
-    db.session.commit()
+        db.session.commit()
 
-    return jsonify({"sucesso": "Dados importados com sucesso."}), 200
+        return jsonify({
+            "sucesso": "Dados importados com sucesso.",
+            "data_inicial": str(data_minima),
+            "data_final": str(data_maxima)
+        }), 200
+
+    except ValueError:
+        return '', 400
+    except Exception:
+        # Captura genérica de qualquer outro erro não especificado acima
+        return '', 400
 
 @app.route('/buscar_vendas', methods=['GET'])
 def buscar_vendas():
